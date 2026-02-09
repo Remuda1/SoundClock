@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time Sound Clock (15s Snap) — V3</title>
+  <style>
+    :root{
+      --bg:#0b0c0f; --fg:#e9e9ee; --muted:#a7a7b2;
+      --card:rgba(255,255,255,0.06); --line:rgba(255,255,255,0.10);
+      --soft:rgba(0,0,0,0.18);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      background:
+        radial-gradient(1200px 800px at 20% 0%, rgba(207,211,255,0.08), transparent 45%),
+        radial-gradient(900px 700px at 100% 30%, rgba(255,255,255,0.05), transparent 50%),
+        var(--bg);
+      color:var(--fg);
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      padding:22px;
+    }
+    .wrap{
+      width:min(1100px,100%);
+      border:1px solid var(--line);
+      background:var(--card);
+      border-radius:18px;
+      padding:18px 18px 16px;
+      backdrop-filter:blur(10px);
+    }
+    header{
+      display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+      padding:4px 2px 14px; border-bottom:1px solid var(--line);
+    }
+    h1{font-size:16px; font-weight:600; margin:0; letter-spacing:.2px}
+    .clock{font-variant-numeric:tabular-nums; color:var(--muted); font-size:14px}
+
+    .grid{display:grid; grid-template-columns:1fr; gap:12px; margin-top:14px}
+    @media(min-width:920px){ .grid{grid-template-columns: 1.05fr 0.95fr; } }
+
+    .panel{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:14px;
+      background:var(--soft);
+    }
+    .row{
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      padding:10px 0;
+      border-bottom:1px solid rgba(255,255,255,0.06);
+      flex-wrap:wrap;
+    }
+    .row:last-child{border-bottom:none; padding-bottom:0}
+
+    .label{color:var(--muted); font-size:12px}
+    .value{font-variant-numeric:tabular-nums; font-size:13px}
+    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+
+    button{
+      appearance:none;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,0.06);
+      color:var(--fg);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-size:13px;
+      white-space:nowrap;
+    }
+    button:hover{background:rgba(255,255,255,0.10)}
+    button:active{transform:translateY(1px)}
+    button:disabled{opacity:.55; cursor:not-allowed}
+
+    .pill{
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:8px 10px;
+      color:var(--muted);
+      font-size:12px;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+    }
+    .dot{
+      width:8px; height:8px; border-radius:999px;
+      background:#666; box-shadow:0 0 0 3px rgba(255,255,255,0.06);
+    }
+    .dot.on{background:#7CFFB2}
+
+    .small{font-size:12px; color:var(--muted); line-height:1.45; margin-top:10px}
+
+    .field{display:grid; gap:6px; margin-top:10px}
+    input[type="number"], input[type="time"]{
+      width:100%;
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,0.05);
+      color:var(--fg);
+      font-size:13px;
+    }
+    input[type="checkbox"]{ transform: translateY(1px); }
+    .twoCol{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .threeCol{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+    .fourCol{ display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap:10px; }
+
+    .fileGrid{ display:grid; gap:8px; margin-top:10px; }
+    .fileRow{
+      display:grid;
+      grid-template-columns: 1.25fr 0.8fr auto;
+      gap:10px;
+      align-items:center;
+      padding:10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,0.08);
+      background:rgba(0,0,0,0.14);
+    }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .tag{
+      font-size:11px;
+      color:var(--muted);
+      border:1px solid rgba(255,255,255,0.14);
+      padding:4px 8px;
+      border-radius:999px;
+      display:inline-flex;
+      justify-self:start;
+    }
+    .hint{ font-size:11px; color: rgba(233,233,238,0.70); }
+    .warn{ color: #ffd08a; }
+    .ok{ color: #a5ffcf; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Time Sound Clock — V3</h1>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <div class="row">
+        <div>
+          <div class="label">Status</div>
+          <div class="value">
+            <span class="pill"><span class="dot" id="statusDot"></span><span id="statusText">Stopped</span></span>
+            <span class="pill" style="margin-left:8px;"><span id="phaseText">Phase: —</span></span>
+            <span class="pill" style="margin-left:8px;"><span id="alignText">Align: —</span></span>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="btnStart">Start</button>
+          <button id="btnStop" disabled>Stop</button>
+          <button id="btnOneCycle">Play 1 cycle</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Active window</div>
+          <div class="value" id="windowInfo">—</div>
+        </div>
+        <div>
+          <div class="label">Now</div>
+          <div class="value" id="windowState">—</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Cycle budget</div>
+          <div class="value" id="budgetInfo">—</div>
+        </div>
+        <div>
+          <div class="label">Auto gaps</div>
+          <div class="value" id="gapInfo">—</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <div class="label">Hour mapping</div>
+          <div class="value" id="hourInfo">—</div>
+        </div>
+        <div>
+          <div class="label">Minute mapping</div>
+          <div class="value" id="minInfo">—</div>
+        </div>
+      </div>
+
+      <div class="small">
+        Best on phones via a local server: <span class="mono">python -m http.server 8000</span> then open <span class="mono">http://&lt;your-ip&gt;:8000/</span>.
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <div class="label">Preview time (audition mappings)</div>
+        <div class="twoCol">
+          <div class="field" style="margin-top:0;">
+            <div class="label">Time (HH:MM)</div>
+            <input id="previewTime" type="time" step="60" value="09:10" />
+          </div>
+          <div class="field" style="margin-top:0;">
+            <div class="label">Seconds (0–59)</div>
+            <input id="previewSec" type="number" min="0" max="59" value="0" />
+          </div>
+        </div>
+        <div class="row" style="border-bottom:none; padding-bottom:0; margin-top:6px;">
+          <div class="controls">
+            <label class="label" style="display:flex; gap:10px; align-items:center; cursor:pointer;">
+              <input id="usePreview" type="checkbox" />
+              Use preview time
+            </label>
+            <button id="btnNow">Now</button>
+          </div>
+          <div class="hint">Preview affects the encoding snapshot taken at each cycle start.</div>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <div class="label">Run only during these hours</div>
+        <div class="twoCol">
+          <div class="field" style="margin-top:0;">
+            <div class="label">On hour (0–23)</div>
+            <input id="onHour" type="number" min="0" max="23" value="7" />
+          </div>
+          <div class="field" style="margin-top:0;">
+            <div class="label">Off hour (0–23)</div>
+            <input id="offHour" type="number" min="0" max="23" value="22" />
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="row">
+        <div>
+          <div class="label">Cycle controls</div>
+          <div class="value">Each segment ≤ 4.0s. Remaining time becomes silence. Cycle snaps to a 15s grid. Ping always plays.</div>
+        </div>
+        <div class="controls">
+          <button id="btnReset">Reset defaults</button>
+        </div>
+      </div>
+
+      <div class="fourCol" style="margin-top:10px;">
+        <div class="field" style="margin-top:0;">
+          <div class="label">Hour length (s)</div>
+          <input id="lenHour" type="number" min="0.5" max="4" step="0.1" value="4" />
+        </div>
+        <div class="field" style="margin-top:0;">
+          <div class="label">Ten-min length (s)</div>
+          <input id="lenTen" type="number" min="0.5" max="4" step="0.1" value="4" />
+        </div>
+        <div class="field" style="margin-top:0;">
+          <div class="label">One-min length (s)</div>
+          <input id="lenOne" type="number" min="0.5" max="4" step="0.1" value="4" />
+        </div>
+        <div class="field" style="margin-top:0;">
+          <div class="label">Ping length (s)</div>
+          <input id="lenPing" type="number" min="0.1" max="1.5" step="0.1" value="0.5" />
+        </div>
+      </div>
+
+      <div class="threeCol" style="margin-top:10px;">
+        <div class="field" style="margin-top:0;">
+          <div class="label">Cut silence (ms)</div>
+          <input id="cutGapMs" type="number" min="30" max="400" step="10" value="100" />
+          <div class="hint">Default 0.1s</div>
+        </div>
+        <div class="field" style="margin-top:0;">
+          <div class="label">Cut fade (ms)</div>
+          <input id="cutFadeMs" type="number" min="0" max="200" step="10" value="40" />
+          <div class="hint">Softens clicks</div>
+        </div>
+        <div class="field" style="margin-top:0;">
+          <div class="label">Ping volume</div>
+          <input id="pingVol" type="number" min="0" max="1" step="0.05" value="0.35" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:6px;">
+        <div>
+          <div class="label">Per-file volume</div>
+          <div class="value">Hour/One-min use env sounds. Ten-min uses singing bowl / handpan (aww).</div>
+        </div>
+        <div class="hint" id="budgetWarn"></div>
+      </div>
+
+      <div class="fileGrid" id="fileGrid"></div>
+
+      <div class="small">
+        Keep files next to this HTML (case-sensitive): <span class="mono">Horgan.mp3, Hfan2.mp3, Hhvac.m4a, Hocean.mp3, singingbowl3s.mp3, aww3s.mp3, pinging.mp3</span>.
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const ENV_KEYS = ["Horgan", "Hfan2", "Hhvac", "Hocean"];
+const TEN_KEYS = ["singingbowl3s", "aww3s"];
+
+const FILES = [
+  { key: "Horgan", file: "Horgan.mp3", kind: "env" },
+  { key: "Hfan2",  file: "Hfan2.mp3",  kind: "env" },
+  { key: "Hhvac",  file: "Hhvac.m4a",  kind: "env" },
+  { key: "Hocean", file: "Hocean.mp3", kind: "env" },
+  { key: "singingbowl3s", file: "singingbowl3s.mp3", kind: "ten" },
+  { key: "aww3s",         file: "aww3s.mp3",         kind: "ten" },
+  { key: "ping",   file: "pinging.mp3", kind: "ping" },
+];
+
+const DEFAULTS = {
+  volume: {
+    Horgan: 1.0, Hfan2: 1.0, Hhvac: 1.0, Hocean: 1.0,
+    singingbowl3s: 1.0, aww3s: 1.0
+  },
+  pingVolume: 0.35,
+  lenHour: 4.0, lenTen: 4.0, lenOne: 4.0, lenPing: 0.5,
+  cutGapMs: 100, cutFadeMs: 40,
+  onHour: 7, offHour: 22,
+};
+
+const LS_KEY = "soundclock_15s_snap_v3";
+
+function $(id){ return document.getElementById(id); }
+function fmt2(n){ return String(n).padStart(2,"0"); }
+function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+function sleep(ms){ return new Promise(res => setTimeout(res, ms)); }
+function sameSrc(audio, file){
+  return audio.src && (audio.src.endsWith("/" + file) || audio.src.endsWith("\\" + file) || audio.src.endsWith(file));
+}
+function fileForKey(key){ return FILES.find(x => x.key === key)?.file; }
+
+function setStatus(on, text){
+  $("statusDot").classList.toggle("on", !!on);
+  $("statusText").textContent = text;
+}
+
+function inActiveWindow(hour, onHour, offHour){
+  onHour = Number(onHour); offHour = Number(offHour);
+  if (!Number.isFinite(onHour) || !Number.isFinite(offHour)) return true;
+  if (onHour === offHour) return true;
+  if (onHour < offHour) return (hour >= onHour && hour < offHour);
+  return (hour >= onHour) || (hour < offHour);
+}
+
+/* SETTINGS */
+function loadSettings(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object") return null;
+    return obj;
+  }catch{ return null; }
+}
+function saveSettings(s){ localStorage.setItem(LS_KEY, JSON.stringify(s)); }
+function makeSettings(){
+  const s = loadSettings();
+  if (s) return s;
+  return {
+    volume: { ...DEFAULTS.volume },
+    pingVolume: DEFAULTS.pingVolume,
+    lenHour: DEFAULTS.lenHour,
+    lenTen: DEFAULTS.lenTen,
+    lenOne: DEFAULTS.lenOne,
+    lenPing: DEFAULTS.lenPing,
+    cutGapMs: DEFAULTS.cutGapMs,
+    cutFadeMs: DEFAULTS.cutFadeMs,
+    onHour: DEFAULTS.onHour,
+    offHour: DEFAULTS.offHour,
+  };
+}
+const settings = makeSettings();
+
+/* STATE */
+const state = {
+  running: false,
+  oneCycleOnly: false,
+  phase: "idle",
+  alignTimeout: null,
+  loopTimeout: null,
+  timers: [],
+  audio: new Audio(),
+  pingAudio: new Audio(),
+};
+
+function clearTimers(){
+  for (const t of state.timers) clearTimeout(t);
+  state.timers = [];
+}
+function clearLoopTimers(){
+  if (state.alignTimeout) clearTimeout(state.alignTimeout);
+  if (state.loopTimeout) clearTimeout(state.loopTimeout);
+  state.alignTimeout = null;
+  state.loopTimeout = null;
+}
+function stopAudioAll(){
+  clearTimers();
+  for (const a of [state.audio, state.pingAudio]){
+    try { a.pause(); } catch {}
+    try { a.currentTime = 0; } catch {}
+    a.volume = 0;
+  }
+}
+
+/* UI: file volumes */
+function buildFileGrid(){
+  const grid = $("fileGrid");
+  grid.innerHTML = "";
+  const allKeys = [...ENV_KEYS, ...TEN_KEYS];
+
+  for (const k of allKeys){
+    const f = FILES.find(x => x.key === k);
+    const row = document.createElement("div");
+    row.className = "fileRow";
+
+    const name = document.createElement("div");
+    name.innerHTML = `<div class="mono">${f?.file || k}</div><div class="hint">${k}</div>`;
+
+    const vol = document.createElement("div");
+    const val = Number(settings.volume[k] ?? 1);
+    vol.innerHTML = `<div class="label">Volume (0–1)</div>
+      <input type="number" min="0" max="1" step="0.05" value="${val}" data-k="${k}">`;
+
+    const tag = document.createElement("div");
+    const kind = f?.kind === "ten" ? "TEN" : "ENV";
+    tag.innerHTML = `<span class="tag">${kind}</span>`;
+
+    row.appendChild(name);
+    row.appendChild(vol);
+    row.appendChild(tag);
+    grid.appendChild(row);
+  }
+
+  grid.querySelectorAll("input[data-k]").forEach(inp => {
+    inp.addEventListener("change", (e) => {
+      const k = e.target.getAttribute("data-k");
+      const v = clamp(Number(e.target.value), 0, 1);
+      settings.volume[k] = v;
+      e.target.value = v;
+      saveSettings(settings);
+    });
+  });
+}
+
+function loadUIFromSettings(){
+  $("lenHour").value = settings.lenHour;
+  $("lenTen").value  = settings.lenTen;
+  $("lenOne").value  = settings.lenOne;
+  $("lenPing").value = settings.lenPing;
+  $("cutGapMs").value = settings.cutGapMs;
+  $("cutFadeMs").value = settings.cutFadeMs;
+  $("pingVol").value = settings.pingVolume;
+  $("onHour").value = settings.onHour;
+  $("offHour").value = settings.offHour;
+}
+
+function wireUI(){
+  const numeric = [
+    ["lenHour", 0.5, 4.0, "lenHour"],
+    ["lenTen",  0.5, 4.0, "lenTen"],
+    ["lenOne",  0.5, 4.0, "lenOne"],
+    ["lenPing", 0.1, 1.5, "lenPing"],
+    ["cutGapMs", 30, 400, "cutGapMs"],
+    ["cutFadeMs", 0, 200, "cutFadeMs"],
+    ["pingVol", 0, 1, "pingVolume"],
+    ["onHour", 0, 23, "onHour"],
+    ["offHour", 0, 23, "offHour"],
+  ];
+  for (const [id, lo, hi, key] of numeric){
+    $(id).addEventListener("change", () => {
+      const v = clamp(Number($(id).value), lo, hi);
+      $(id).value = v;
+      settings[key] = v;
+      saveSettings(settings);
+      updateUI();
+    });
+  }
+
+  $("btnReset").addEventListener("click", () => {
+    settings.volume = { ...DEFAULTS.volume };
+    settings.pingVolume = DEFAULTS.pingVolume;
+    settings.lenHour = DEFAULTS.lenHour;
+    settings.lenTen  = DEFAULTS.lenTen;
+    settings.lenOne  = DEFAULTS.lenOne;
+    settings.lenPing = DEFAULTS.lenPing;
+    settings.cutGapMs = DEFAULTS.cutGapMs;
+    settings.cutFadeMs = DEFAULTS.cutFadeMs;
+    settings.onHour = DEFAULTS.onHour;
+    settings.offHour = DEFAULTS.offHour;
+    saveSettings(settings);
+    loadUIFromSettings();
+    buildFileGrid();
+    updateUI();
+  });
+
+  $("btnNow").addEventListener("click", () => {
+    const now = new Date();
+    $("previewTime").value = `${fmt2(now.getHours())}:${fmt2(now.getMinutes())}`;
+    $("previewSec").value = now.getSeconds();
+    updateUI();
+  });
+
+  $("usePreview").addEventListener("change", updateUI);
+  $("previewTime").addEventListener("change", updateUI);
+  $("previewSec").addEventListener("change", updateUI);
+
+  $("btnStart").addEventListener("click", () => start(false));
+  $("btnStop").addEventListener("click", stop);
+  $("btnOneCycle").addEventListener("click", () => start(true));
+}
+
+/* ENCODING */
+function cutsForCount(count){
+  if (count <= 0) return [];
+  if (count === 1) return [0.5];
+  return [1/3, 2/3];
+}
+
+function mapHour(t){
+  const h = t.getHours();
+  const block = Math.floor((h % 12) / 3);
+  const soundKey = ENV_KEYS[block];
+  const cutCount = h % 3;
+  return { soundKey, cutCount };
+}
+
+function mapTenMin(t){
+  const m = t.getMinutes();
+  const band = Math.floor(m / 10); // 0..5
+  if (band <= 2) return { soundKey: "singingbowl3s", cutCount: band };
+  return { soundKey: "aww3s", cutCount: band - 3 };
+}
+
+function mapOneMin(t){
+  const d = t.getMinutes() % 10;
+  if (d === 0) return { soundKey: "Hocean", cutCount: 0 };
+  if (d >= 1 && d <= 3) return { soundKey: "Horgan", cutCount: d - 1 };
+  if (d >= 4 && d <= 6) return { soundKey: "Hfan2",  cutCount: d - 4 };
+  return { soundKey: "Hhvac", cutCount: d - 7 };
+}
+
+/* AUDIO */
+async function safePlay(a){ try { await a.play(); } catch (e) {} }
+
+function scheduleFade(audio, fromVol, toVol, startMs, durationMs){
+  const steps = 10;
+  const dur = Math.max(0, durationMs);
+  if (dur === 0){
+    state.timers.push(setTimeout(() => { audio.volume = toVol; }, startMs));
+    return;
+  }
+  const stepMs = Math.max(8, Math.floor(dur / steps));
+  for (let i = 0; i <= steps; i++){
+    const t = startMs + i * stepMs;
+    const v = fromVol + (toVol - fromVol) * (i / steps);
+    state.timers.push(setTimeout(() => {
+      if (!state.running) return;
+      audio.volume = clamp(v, 0, 1);
+    }, t));
+  }
+}
+
+function scheduleCuts(audio, segMs, baseVol, cutCount){
+  const cuts = cutsForCount(cutCount);
+  const gapMs = clamp(Number(settings.cutGapMs), 30, 400);
+  const fadeMs = clamp(Number(settings.cutFadeMs), 0, 200);
+  audio.volume = baseVol;
+
+  for (const frac of cuts){
+    const cutPoint = Math.floor(frac * segMs);
+    const fadeDownStart = Math.max(0, cutPoint - fadeMs);
+    const fadeDownDur = cutPoint - fadeDownStart;
+    scheduleFade(audio, baseVol, 0, fadeDownStart, fadeDownDur);
+
+    state.timers.push(setTimeout(() => {
+      if (!state.running) return;
+      audio.volume = 0;
+    }, cutPoint));
+
+    const fadeUpStart = cutPoint + gapMs;
+    scheduleFade(audio, 0, baseVol, fadeUpStart, fadeMs);
+  }
+}
+
+async function playSegment({soundKey, lengthMs, cutCount}){
+  const file = fileForKey(soundKey);
+  if (!file) return;
+
+  if (!sameSrc(state.audio, file)){
+    state.audio.src = file;
+    state.audio.preload = "auto";
+  }
+
+  clearTimers();
+  try { state.audio.pause(); state.audio.currentTime = 0; } catch {}
+
+  const baseVol = clamp(Number(settings.volume[soundKey] ?? 1), 0, 1);
+  state.audio.volume = baseVol;
+  await safePlay(state.audio);
+
+  scheduleCuts(state.audio, lengthMs, baseVol, cutCount);
+
+  await sleep(lengthMs);
+  try { state.audio.pause(); } catch {}
+  state.audio.volume = 0;
+}
+
+async function playPing(lengthMs){
+  const file = fileForKey("ping");
+  if (!file) return;
+
+  if (!sameSrc(state.pingAudio, file)){
+    state.pingAudio.src = file;
+    state.pingAudio.preload = "auto";
+  }
+
+  clearTimers();
+  try { state.pingAudio.pause(); state.pingAudio.currentTime = 0; } catch {}
+  state.pingAudio.volume = clamp(Number(settings.pingVolume ?? 0.35), 0, 1);
+  await safePlay(state.pingAudio);
+
+  await sleep(lengthMs);
+  try { state.pingAudio.pause(); } catch {}
+  state.pingAudio.volume = 0;
+}
+
+/* CYCLE BUDGET */
+function getLengthsMs(){
+  const h = clamp(Number(settings.lenHour), 0.5, 4.0) * 1000;
+  const t = clamp(Number(settings.lenTen),  0.5, 4.0) * 1000;
+  const o = clamp(Number(settings.lenOne),  0.5, 4.0) * 1000;
+  const p = clamp(Number(settings.lenPing), 0.1, 1.5) * 1000;
+  return { h, t, o, p };
+}
+
+function computeGaps(){
+  const {h,t,o,p} = getLengthsMs();
+  const totalAudio = h + t + o + p;
+  const cycleMs = 15000;
+  let remain = Math.max(0, cycleMs - totalAudio);
+
+  const preferred = 200;
+  let gapHT=0, gapTO=0, gapOP=0, tail=0;
+
+  if (remain >= preferred*3){
+    gapHT = preferred; gapTO = preferred; gapOP = preferred;
+    tail = remain - preferred*3;
+  } else {
+    const each = Math.floor(remain / 3);
+    gapHT = each; gapTO = each; gapOP = remain - each*2;
+    tail = 0;
+  }
+  return { cycleMs, totalAudio, remain, gapHT, gapTO, gapOP, tail };
+}
+
+/* TIME */
+function getEffectiveTime(){
+  const usePreview = $("usePreview").checked;
+  const now = new Date();
+  if (!usePreview) return now;
+
+  const t = $("previewTime").value || "00:00";
+  const parts = t.split(":");
+  const hh = Number(parts[0] ?? 0);
+  const mm = Number(parts[1] ?? 0);
+  const ss = Number($("previewSec").value || 0);
+
+  const d = new Date(now);
+  d.setHours(Number.isFinite(hh) ? hh : 0);
+  d.setMinutes(Number.isFinite(mm) ? mm : 0);
+  d.setSeconds(Number.isFinite(ss) ? ss : 0);
+  d.setMilliseconds(0);
+  return d;
+}
+
+function msUntilNext15sBoundary(nowMs){
+  const mod = nowMs % 15000;
+  let wait = 15000 - mod;
+  if (wait === 15000) wait = 0;
+  if (wait < 40) wait = 0;
+  return wait;
+}
+
+/* LOOP */
+async function runOneCycle(snapshotTime){
+  const g = computeGaps();
+  const {h,t,o,p} = getLengthsMs();
+
+  const hour = mapHour(snapshotTime);
+  const ten  = mapTenMin(snapshotTime);
+  const one  = mapOneMin(snapshotTime);
+
+  $("phaseText").textContent = "Phase: HOUR";
+  await playSegment({soundKey: hour.soundKey, lengthMs: h, cutCount: hour.cutCount});
+  await sleep(g.gapHT);
+
+  $("phaseText").textContent = "Phase: TEN";
+  await playSegment({soundKey: ten.soundKey, lengthMs: t, cutCount: ten.cutCount});
+  await sleep(g.gapTO);
+
+  $("phaseText").textContent = "Phase: ONE";
+  await playSegment({soundKey: one.soundKey, lengthMs: o, cutCount: one.cutCount});
+  await sleep(g.gapOP);
+
+  $("phaseText").textContent = "Phase: PING";
+  await playPing(p);
+
+  $("phaseText").textContent = "Phase: SILENCE";
+  await sleep(g.tail);
+
+  $("phaseText").textContent = "Phase: —";
+}
+
+async function loopStart(){
+  if (!state.running) return;
+
+  const realNow = new Date();
+  const allowed = inActiveWindow(realNow.getHours(), settings.onHour, settings.offHour);
+  if (!allowed){
+    stopAudioAll();
+    state.loopTimeout = setTimeout(loopStart, 500);
+    return;
+  }
+
+  const snapshot = getEffectiveTime();
+  await runOneCycle(snapshot);
+
+  if (!state.running) return;
+  if (state.oneCycleOnly){ stop(); return; }
+
+  const wait = msUntilNext15sBoundary(Date.now());
+  $("alignText").textContent = wait ? `Align: +${Math.round(wait)}ms` : "Align: locked";
+  state.loopTimeout = setTimeout(loopStart, wait);
+}
+
+async function start(oneCycleOnly=false){
+  if (state.running) return;
+  state.running = true;
+  state.oneCycleOnly = !!oneCycleOnly;
+
+  setStatus(true, oneCycleOnly ? "Playing 1 cycle" : "Running");
+  $("btnStart").disabled = true;
+  $("btnStop").disabled = false;
+
+  const pingFile = fileForKey("ping");
+  if (pingFile && !sameSrc(state.pingAudio, pingFile)){
+    state.pingAudio.src = pingFile;
+    state.pingAudio.preload = "auto";
+  }
+
+  clearLoopTimers();
+  const wait = msUntilNext15sBoundary(Date.now());
+  $("alignText").textContent = wait ? `Align: waiting ${Math.round(wait)}ms` : "Align: locked";
+  state.alignTimeout = setTimeout(() => {
+    if (!state.running) return;
+    loopStart();
+  }, wait);
+}
+
+function stop(){
+  if (!state.running) return;
+  state.running = false;
+  state.oneCycleOnly = false;
+  clearLoopTimers();
+  stopAudioAll();
+  setStatus(false, "Stopped");
+  $("btnStart").disabled = false;
+  $("btnStop").disabled = true;
+  $("phaseText").textContent = "Phase: —";
+  $("alignText").textContent = "Align: —";
+}
+
+/* UI readouts */
+function updateBudgetUI(){
+  const g = computeGaps();
+  const sec = (ms) => (ms/1000).toFixed(2);
+  $("budgetInfo").textContent = `Audio ${sec(g.totalAudio)}s + Silence ${sec(g.remain)}s = 15.00s`;
+  $("gapInfo").textContent = `gaps: HT ${g.gapHT}ms, TO ${g.gapTO}ms, OP ${g.gapOP}ms, tail ${g.tail}ms`;
+
+  const warn = $("budgetWarn");
+  const over = (g.totalAudio > 15000);
+  if (over){
+    warn.textContent = "Audio exceeds 15s (clamped). Reduce lengths.";
+    warn.className = "hint warn";
+  } else {
+    warn.textContent = `Remaining silence: ${sec(g.remain)}s`;
+    warn.className = "hint ok";
+  }
+}
+
+function updateMappingUI(){
+  const effective = getEffectiveTime();
+  const h = mapHour(effective);
+  const t = mapTenMin(effective);
+  const o = mapOneMin(effective);
+  $("hourInfo").textContent = `${h.soundKey} • cuts ${h.cutCount} • (hour ${effective.getHours()})`;
+  $("minInfo").textContent  = `ten: ${t.soundKey} cuts ${t.cutCount} (min ${effective.getMinutes()}) • one: ${o.soundKey} cuts ${o.cutCount} (digit ${effective.getMinutes()%10})`;
+}
+
+function updateWindowUI(){
+  const realNow = new Date();
+  const onH = Number(settings.onHour);
+  const offH = Number(settings.offHour);
+  const allowed = inActiveWindow(realNow.getHours(), onH, offH);
+  $("windowInfo").textContent = `${fmt2(onH)}:00 → ${fmt2(offH)}:00`;
+  $("windowState").textContent = allowed ? "inside window" : "outside window";
+}
+
+function updateClockUI(){
+  const now = new Date();
+  $("clock").textContent = `${fmt2(now.getHours())}:${fmt2(now.getMinutes())}:${fmt2(now.getSeconds())}`;
+}
+
+function updateUI(){
+  updateClockUI();
+  updateWindowUI();
+  updateBudgetUI();
+  updateMappingUI();
+}
+
+/* INIT */
+loadUIFromSettings();
+buildFileGrid();
+wireUI();
+updateUI();
+setInterval(updateUI, 250);
+</script>
+</body>
+</html>
